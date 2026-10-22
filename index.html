@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<meta name="theme-color" content="#e52b18">
+<title>Spike Runner: Car Escape</title>
+<style>
+*{box-sizing:border-box}html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#e52b18;font-family:system-ui,Arial;color:#fff;touch-action:none}
+canvas{display:block;width:100vw;height:100dvh;background:#e52b18}
+#hud{position:fixed;top:12px;left:12px;right:12px;display:flex;justify-content:space-between;align-items:center;gap:8px;pointer-events:none;text-shadow:0 2px 4px #7a140d;font-weight:800}
+.pill{background:#171717b8;border:1px solid #ffffff55;border-radius:14px;padding:8px 12px;font-size:14px}
+#overlay{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:#210c0ab8;padding:22px}
+.panel{width:min(420px,100%);background:#191919f2;border:1px solid #ffffff35;border-radius:24px;padding:25px 22px;text-align:center;box-shadow:0 20px 70px #0007}
+h1{font-size:clamp(28px,8vw,42px);line-height:1.02;margin:0 0 10px}p{color:#e7e7e7;line-height:1.5;margin:8px 0 18px}
+button{border:0;border-radius:14px;padding:14px 20px;background:#f5f5f5;color:#171717;font-size:17px;font-weight:900;min-width:130px}
+.small{font-size:12px;color:#bdbdbd;margin-top:14px}
+#controls{position:fixed;bottom:22px;left:0;right:0;display:flex;justify-content:space-between;padding:0 20px;pointer-events:none}
+.ctrl{pointer-events:auto;width:76px;height:76px;border-radius:50%;background:#161616b8;color:white;border:2px solid #ffffff9c;font-size:28px;display:flex;align-items:center;justify-content:center;user-select:none}
+.hidden{display:none!important}
+</style>
+</head>
+<body>
+<canvas id="game" aria-label="Spike Runner game"></canvas>
+<div id="hud"><div class="pill">SPIKE RUNNER</div><div class="pill">SCORE <span id="score">0</span></div><div class="pill">BEST <span id="best">0</span></div></div>
+<div id="controls"><button class="ctrl" id="up" aria-label="Move up">▲</button><button class="ctrl" id="down" aria-label="Move down">▼</button></div>
+<div id="overlay"><div class="panel"><h1>SPIKE<br>RUNNER</h1><p>Drive the white sports car through the gap. Dodge the spikes above and below, and survive as long as you can.</p><button id="start">PLAY NOW</button><div class="small">Touch ▲ / ▼ or use keyboard ↑ / ↓</div></div></div>
+<script>
+(() => {
+ const canvas=document.getElementById('game'),ctx=canvas.getContext('2d');
+ const scoreEl=document.getElementById('score'),bestEl=document.getElementById('best'),overlay=document.getElementById('overlay'),startBtn=document.getElementById('start');
+ let W=0,H=0,dpr=1, running=false, last=0, score=0, speed=260, spawnTimer=0, obstacles=[], particles=[];
+ let best=Number(localStorage.getItem('spikeRunnerBest')||0); bestEl.textContent=best;
+ const car={x:0,y:0,w:84,h:34,targetY:0};
+ function resize(){dpr=Math.min(devicePixelRatio||1,2);W=innerWidth;H=innerHeight;canvas.width=W*dpr;canvas.height=H*dpr;ctx.setTransform(dpr,0,0,dpr,0,0);car.x=Math.max(90,W*.25);car.y=H*.5;car.targetY=car.y}
+ addEventListener('resize',resize);resize();
+ function rand(a,b){return a+Math.random()*(b-a)}
+ function drawSpike(x,y,dir,size=20){ctx.save();ctx.translate(x,y);ctx.fillStyle='#10b84b';ctx.strokeStyle='#073e20';ctx.lineWidth=1.4;ctx.beginPath();if(dir===1){ctx.moveTo(-size/2,0);ctx.lineTo(size/2,0);ctx.lineTo(0,size*1.35)}else{ctx.moveTo(-size/2,0);ctx.lineTo(size/2,0);ctx.lineTo(0,-size*1.35)}ctx.closePath();ctx.fill();ctx.stroke();ctx.restore()}
+ function drawRail(y){ctx.fillStyle='#7c8585';ctx.fillRect(0,y-5,W,10);ctx.fillStyle='#303738';ctx.fillRect(0,y-2,W,4);for(let x=0;x<W+18;x+=18){ctx.fillStyle='#bfc4c1';ctx.beginPath();ctx.arc(x,y,3.4,0,Math.PI*2);ctx.fill();ctx.strokeStyle='#363a39';ctx.lineWidth=1;ctx.stroke()}}
+ function drawCar(){let x=car.x,y=car.y;ctx.save();ctx.translate(x,y);
+  // shadow
+  ctx.fillStyle='#6b100b66';ctx.beginPath();ctx.ellipse(0,16,47,8,0,0,Math.PI*2);ctx.fill();
+  // body silhouette
+  ctx.fillStyle='#f7f7f4';ctx.strokeStyle='#a9aeaf';ctx.lineWidth=1.4;ctx.beginPath();ctx.moveTo(-43,7);ctx.lineTo(-39,-3);ctx.lineTo(-17,-16);ctx.lineTo(10,-17);ctx.lineTo(29,-9);ctx.lineTo(43,2);ctx.lineTo(40,10);ctx.lineTo(-35,10);ctx.closePath();ctx.fill();ctx.stroke();
+  // windows
+  ctx.fillStyle='#202a30';ctx.beginPath();ctx.moveTo(-21,-12);ctx.lineTo(-14,-15);ctx.lineTo(8,-15);ctx.lineTo(23,-8);ctx.lineTo(-15,-8);ctx.closePath();ctx.fill();
+  ctx.fillStyle='#d9dcda';ctx.fillRect(-34,4,65,3);
+  for(let wx of [-27,25]){ctx.fillStyle='#202020';ctx.beginPath();ctx.arc(wx,10,9,0,Math.PI*2);ctx.fill();ctx.fillStyle='#9aa1a3';ctx.beginPath();ctx.arc(wx,10,5.4,0,Math.PI*2);ctx.fill();ctx.fillStyle='#4b5356';ctx.beginPath();ctx.arc(wx,10,2,0,Math.PI*2);ctx.fill()}
+  ctx.fillStyle='#fff7b8';ctx.fillRect(39,1,4,3);ctx.restore()}
+ function spawn(){const gap=rand(H*.35,H*.48), center=rand(H*.32,H*.68), topEnd=center-gap/2,bottomStart=center+gap/2;obstacles.push({x:W+30,topEnd,bottomStart,passed:false});}
+ function drawObstacle(o){drawRail(35);drawRail(H-35);for(let x=o.x;x<o.x+34;x+=18){drawSpike(x,35,1,17);drawSpike(x,H-35,-1,17)}ctx.fillStyle='#a91b10';ctx.fillRect(o.x-5,35,8,Math.max(0,o.topEnd-35));ctx.fillRect(o.x-5,o.bottomStart,8,Math.max(0,H-35-o.bottomStart));for(let y=35;y<o.topEnd;y+=18)drawSpike(o.x,y,1,17);for(let y=H-35;y>o.bottomStart;y-=18)drawSpike(o.x,y,-1,17)}
+ function hit(a,b){return a.x+a.w/2>b.x-10&&a.x-a.w/2<b.x+16&&a.y-a.h/2<b.topEnd+6 || a.x+a.w/2>b.x-10&&a.x-a.w/2<b.x+16&&a.y+a.h/2>b.bottomStart-6}
+ function reset(){score=0;speed=260;spawnTimer=.6;obstacles=[];particles=[];car.y=H/2;car.targetY=car.y;scoreEl.textContent='0';last=0;running=true;overlay.classList.add('hidden');requestAnimationFrame(loop)}
+ function endGame(){running=false;best=Math.max(best,score);localStorage.setItem('spikeRunnerBest',best);bestEl.textContent=best;overlay.innerHTML=`<div class="panel"><h1>GAME OVER</h1><p>Your score: <b>${score}</b><br>Best score: <b>${best}</b></p><button id="restart">TRY AGAIN</button><div class="small">Keep moving and watch the gap!</div></div>`;overlay.classList.remove('hidden');document.getElementById('restart').onclick=reset}
+ function update(dt){car.y+=(car.targetY-car.y)*Math.min(1,dt*12);speed+=dt*3.5;spawnTimer-=dt;if(spawnTimer<=0){spawn();spawnTimer=rand(1.2,1.65)*Math.max(.64,260/speed)}obstacles.forEach(o=>{o.x-=speed*dt;if(!o.passed&&o.x<car.x){o.passed=true;score++;scoreEl.textContent=score;if(score%5===0)speed+=18}});obstacles=obstacles.filter(o=>o.x>-60);if(car.y-car.h/2<44||car.y+car.h/2>H-44||obstacles.some(o=>hit({x:car.x,y:car.y,w:car.w*.8,h:car.h*.75},o)))endGame()}
+ function render(){ctx.clearRect(0,0,W,H);let g=ctx.createLinearGradient(0,0,W,H);g.addColorStop(0,'#f03b20');g.addColorStop(1,'#d91d13');ctx.fillStyle=g;ctx.fillRect(0,0,W,H);
+  // subtle background streaks
+  ctx.globalAlpha=.1;ctx.strokeStyle='#ffb09a';for(let i=0;i<8;i++){let y=(i*H/8+performance.now()*.025)%H;ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(W,y-20);ctx.stroke()}ctx.globalAlpha=1;
+  drawRail(35);drawRail(H-35);for(let x=4;x<W;x+=21){drawSpike(x,35,1,17);drawSpike(x,H-35,-1,17)}
+  obstacles.forEach(o=>{for(let y=35;y<o.topEnd;y+=18)drawSpike(o.x,y,1,17);for(let y=H-35;y>o.bottomStart;y-=18)drawSpike(o.x,y,-1,17);ctx.fillStyle='#252727';ctx.fillRect(o.x-4,35,8,Math.max(0,o.topEnd-35));ctx.fillRect(o.x-4,o.bottomStart,8,Math.max(0,H-35-o.bottomStart));});
+  drawCar()}
+ function loop(t){if(!running)return;let dt=Math.min((t-(last||t))/1000,.04);last=t;update(dt);render();if(running)requestAnimationFrame(loop)}
+ function move(d){car.targetY=Math.max(65,Math.min(H-65,car.targetY+d*H*.22))}
+ document.getElementById('up').addEventListener('pointerdown',e=>{e.preventDefault();move(-1)});document.getElementById('down').addEventListener('pointerdown',e=>{e.preventDefault();move(1)});
+ addEventListener('keydown',e=>{if(e.key==='ArrowUp'||e.key==='w'){e.preventDefault();move(-1)}if(e.key==='ArrowDown'||e.key==='s'){e.preventDefault();move(1)}if((e.key===' '||e.key==='Enter')&&!running)reset()});
+ let touchStart=null;canvas.addEventListener('pointerdown',e=>{touchStart={x:e.clientX,y:e.clientY}});canvas.addEventListener('pointerup',e=>{if(!touchStart)return;let dy=e.clientY-touchStart.y;if(Math.abs(dy)>12)move(dy<0?-1:1);touchStart=null});
+ startBtn.onclick=reset;render();
+})();
+</script>
+</body>
+</html>
